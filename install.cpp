@@ -102,7 +102,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                             std::wstring dest = std::wstring(path) + L"\\nudhi.exe";
                             
                            if (CopyFileW(source.c_str(), dest.c_str(), FALSE)) {
-    // ✅ Register .nd file association with the installed interpreter
+    // Register .nd file association with the installed interpreter
     if (!register_file_association(dest)) {
         MessageBoxW(hwnd, L"Warning: Failed to register .nd file association.", L"Warning", MB_ICONWARNING);
     }
