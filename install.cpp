@@ -101,34 +101,40 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                             std::wstring source = L"nudhi.exe";
                             std::wstring dest = std::wstring(path) + L"\\nudhi.exe";
                             
-                            if (CopyFileW(source.c_str(), dest.c_str(), FALSE)) {
-                                // Modify PATH
-                                HKEY hKey;
-                                if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-                                    L"System\\CurrentControlSet\\Control\\Session Manager\\Environment",
-                                    0, KEY_ALL_ACCESS, &hKey) == ERROR_SUCCESS) {
-                                    
-                                    wchar_t currentPath[2048];
-                                    DWORD pathSize = sizeof(currentPath);
-                                    
-                                    if (RegQueryValueExW(hKey, L"Path", NULL, NULL,
-                                        (LPBYTE)currentPath, &pathSize) == ERROR_SUCCESS) {
-                                        
-                                        std::wstring newPath = std::wstring(currentPath) + L";" + path;
-                                        if (RegSetValueExW(hKey, L"Path", 0, REG_EXPAND_SZ,
-                                            (LPBYTE)newPath.c_str(),
-                                            (newPath.length() + 1) * sizeof(wchar_t)) == ERROR_SUCCESS) {
-                                            
-                                            SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE,
-                                                0, (LPARAM)L"Environment",
-                                                SMTO_ABORTIFHUNG, 5000, NULL);
-                                                
-                                            MessageBoxW(hwnd, L"Installation Complete! you can close the window now.", L"Success", MB_OK);
-                                        }
-                                    }
-                                    RegCloseKey(hKey);
-                                }
-                            } else {
+                           if (CopyFileW(source.c_str(), dest.c_str(), FALSE)) {
+    // ✅ Register .nd file association with the installed interpreter
+    if (!register_file_association(dest)) {
+        MessageBoxW(hwnd, L"Warning: Failed to register .nd file association.", L"Warning", MB_ICONWARNING);
+    }
+
+    // Modify PATH
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+        L"System\\CurrentControlSet\\Control\\Session Manager\\Environment",
+        0, KEY_ALL_ACCESS, &hKey) == ERROR_SUCCESS) {
+
+        wchar_t currentPath[2048];
+        DWORD pathSize = sizeof(currentPath);
+
+        if (RegQueryValueExW(hKey, L"Path", NULL, NULL,
+            (LPBYTE)currentPath, &pathSize) == ERROR_SUCCESS) {
+
+            std::wstring newPath = std::wstring(currentPath) + L";" + path;
+            if (RegSetValueExW(hKey, L"Path", 0, REG_EXPAND_SZ,
+                (LPBYTE)newPath.c_str(),
+                (newPath.length() + 1) * sizeof(wchar_t)) == ERROR_SUCCESS) {
+
+                SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE,
+                    0, (LPARAM)L"Environment",
+                    SMTO_ABORTIFHUNG, 5000, NULL);
+
+                MessageBoxW(hwnd, L"Installation Complete! you can close the window now.", L"Success", MB_OK);
+            }
+        }
+        RegCloseKey(hKey);
+    }
+}
+ else {
                                 MessageBoxW(hwnd, L"Failed to copy nudhi.exe", L"Error", MB_ICONERROR);
                             }
                         } catch (const std::exception& e) {
@@ -149,6 +155,48 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
     return 0;
 }
+
+
+
+#include <windows.h>
+#include <shlwapi.h>
+#include <string>
+#include <iostream>
+
+bool register_file_association(const std::wstring& exePath) {
+    HKEY hKey;
+    LONG result;
+
+    // 1. Associate .nd with nudhi_lang_file
+    result = RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\.nd", 0, NULL, 0, KEY_WRITE, NULL, &hKey, NULL);
+    if (result != ERROR_SUCCESS) return false;
+    result = RegSetValueExW(hKey, NULL, 0, REG_SZ, (const BYTE*)L"nudhi_lang_file", sizeof(wchar_t) * (wcslen(L"nudhi_lang_file") + 1));
+    RegCloseKey(hKey);
+    if (result != ERROR_SUCCESS) return false;
+
+    // 2. Create nudhi_lang_file description
+    result = RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\nudhi_lang_file", 0, NULL, 0, KEY_WRITE, NULL, &hKey, NULL);
+    if (result != ERROR_SUCCESS) return false;
+    result = RegSetValueExW(hKey, NULL, 0, REG_SZ, (const BYTE*)L"Nudhi Lang File", sizeof(wchar_t) * (wcslen(L"Nudhi Lang File") + 1));
+    result = RegSetValueExW(hKey, L"FriendlyTypeName", 0, REG_SZ, (const BYTE*)L"Nudhi Lang File", sizeof(wchar_t) * (wcslen(L"Nudhi Lang File") + 1));
+    RegCloseKey(hKey);
+    if (result != ERROR_SUCCESS) return false;
+
+    // 3. Set the command for opening .nd files
+    result = RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\nudhi_lang_file\\shell\\open\\command", 0, NULL, 0, KEY_WRITE, NULL, &hKey, NULL);
+    if (result != ERROR_SUCCESS) return false;
+
+    std::wstring command = L"\"" + exePath + L"\" \"%1\"";
+    result = RegSetValueExW(hKey, NULL, 0, REG_SZ, (const BYTE*)command.c_str(), sizeof(wchar_t) * (command.length() + 1));
+    RegCloseKey(hKey);
+    if (result != ERROR_SUCCESS) return false;
+
+    return true;
+}
+
+
+
+
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
     hInst = hInstance;  // Store instance handle
